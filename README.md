@@ -1,6 +1,6 @@
 # MiniDictate
 
-A small push-to-talk dictation app for macOS. Hold the right Option key, speak, release, and your words are pasted at the cursor in whatever app you're using.
+A small push-to-talk dictation app for macOS. Hold a hotkey, speak, release, and your words are pasted at the cursor in whatever app you're using.
 
 Speech is transcribed on your Mac with [Whisper](https://github.com/openai/whisper) (the multilingual `base` model, via [WhisperKit](https://github.com/argmaxinc/WhisperKit)). No account, API key or internet connection is needed after the first launch.
 
@@ -20,11 +20,12 @@ The screenshots use sample data from the app's demo mode (see Troubleshooting).
 
 ## Features
 
-- **Hold-to-talk hotkey:** right Option (⌥), works in any app.
+- **Hold-to-talk hotkey**, works in any app. Choose right Option (⌥), right Command (⌘) or Fn (🌐) in Settings.
 - **On-device transcription:** Whisper `base`, with the language detected per dictation.
 - **Live waveform pill** at the bottom of the screen while recording, on whichever display the pointer is on.
 - **Paste at the cursor**, with the previous clipboard contents restored afterwards.
 - **History window** with streak, word count and words-per-minute.
+- **Optional AI cleanup** with your own API key: an LLM fixes punctuation and removes filler words before pasting. Off by default.
 - **Optional hosted transcription** through any OpenAI-compatible endpoint.
 
 ## Download
@@ -80,9 +81,22 @@ This writes `dist/MiniDictate.dmg` without touching the app in the project folde
 xattr -dr com.apple.quarantine /Applications/MiniDictate.app
 ```
 
-## Configuration
+## Settings
 
-Optional. Create `~/.minidictate.json`; changes apply to the next dictation.
+**Hotkey.** Settings → Dictation lets you pick the key to hold: right Option, right Command, or Fn. If holding Fn opens the emoji picker or Apple Dictation, set System Settings → Keyboard → "Press 🌐 key to" to "Do Nothing".
+
+**AI cleanup.** Off by default, in which case the transcript is pasted exactly as Whisper wrote it. To turn it on, open Settings → AI cleanup, pick a provider, paste your API key and click Save:
+
+| Provider | Needs | Default model |
+|---|---|---|
+| Claude | An Anthropic API key | `claude-opus-5-5` (`claude-haiku-5-5` is faster and cheaper) |
+| OpenAI-compatible | A key and a base URL: OpenAI, Groq, OpenRouter, or a local server such as Ollama (no key) | `gpt-4o-mini` |
+
+The model name is editable. "Send a test sentence" checks the key without dictating. When cleanup is on, the transcript text is sent to that provider; audio never leaves the Mac. Keys are stored in the macOS Keychain, not in a file. If a request fails or the reply looks wrong, the raw transcript is pasted instead. Dictations of one or two words skip cleanup.
+
+## Configuration file
+
+Optional, for transcription options. Create `~/.minidictate.json`; changes apply to the next dictation.
 
 | Key | Meaning | Default |
 |---|---|---|
@@ -101,10 +115,11 @@ With `apiKey` set, audio is uploaded to that endpoint. The key is stored in this
 
 ## How it works
 
-1. A `CGEventTap` watches modifier-key changes for right Option.
+1. A `CGEventTap` watches modifier-key changes for the chosen hotkey.
 2. While the key is held, `AVAudioEngine` records the microphone, converted to 16 kHz mono 16-bit PCM. The loudness of each chunk drives the waveform.
 3. On release, the audio goes to the first available engine: the hosted API if a key is configured, otherwise Whisper, otherwise Apple's recognizer.
-4. The text is written to the clipboard, Cmd+V is posted to the focused app, and the previous clipboard contents are restored about half a second later.
+4. If AI cleanup is on, the transcript goes through the chosen LLM.
+5. The text is written to the clipboard, Cmd+V is posted to the focused app, and the previous clipboard contents are restored about half a second later.
 
 ## Project layout
 
@@ -115,6 +130,8 @@ make-dmg.sh               builds dist/MiniDictate.dmg
 Sources/MiniDictate/
   main.swift              app delegate, hotkey listener, dictation flow
   Core.swift              config, log, recorder, transcriber, paste
+  Preferences.swift       hotkey and cleanup settings, Keychain storage
+  Cleanup.swift           optional LLM cleanup pass
   Whisper.swift           WhisperKit engine
   UI.swift                hub window, settings, waveform pill
 ```
@@ -129,7 +146,7 @@ Sources/MiniDictate/
 
 ## Troubleshooting
 
-- **Nothing happens when holding right Option:** check Settings in the app. If Accessibility is off, use the reset command above. If Accessibility is on but the key listener is off, quit and reopen the app.
+- **Nothing happens when holding the hotkey:** check Settings in the app. If Accessibility is off, use the reset command above. If Accessibility is on but the key listener is off, quit and reopen the app.
 - **Checking a step:** the log shows each stage of a dictation (key down, seconds recorded, engine used, characters transcribed).
 - **Testing transcription without the microphone:**
   ```bash
@@ -144,6 +161,6 @@ Sources/MiniDictate/
 ## Known limits
 
 - Paste assumes the V key is in its QWERTY position.
-- Typing Option characters with the right Option key also starts a recording.
+- The hotkey is a modifier key, so using it in a shortcut (for example typing Option characters with right Option) also starts a recording.
 - Whisper `base` is a small model; expect mistakes on names, accents and fast speech.
 - Mixed Hindi-English (Hinglish) speech is not handled well by this model.

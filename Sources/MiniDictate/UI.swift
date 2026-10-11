@@ -36,6 +36,13 @@ final class AppModel: ObservableObject {
     @Published var microphone = false
     @Published var speech = "Asked on first dictation"
     @Published var engine = ""
+    @Published var cleanupNote = ""
+    @Published var hotkey = Preferences.hotkey {
+        didSet {
+            Preferences.hotkey = hotkey
+            activeHotkey = hotkey
+        }
+    }
     let meter = LevelMeter()
     var onTest: () -> Void = {}
 
@@ -239,11 +246,11 @@ struct HomePage: View {
 
     private var banner: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(model.keyListener ? "Hold right ⌥ to dictate anywhere" : "Finish setup to dictate anywhere")
+            Text(model.keyListener ? "Hold \(model.hotkey.symbol) to dictate anywhere" : "Finish setup to dictate anywhere")
                 .font(.system(size: 25, weight: .medium, design: .serif))
             Text(model.keyListener
-                 ? "Click into any text field, hold right Option, speak, and release. Your words are pasted at the cursor."
-                 : "MiniDictate needs Accessibility permission to detect the right Option key and paste text for you.")
+                 ? "Click into any text field, hold \(model.hotkey.name), speak, and release. Your words are pasted at the cursor."
+                 : "MiniDictate needs Accessibility permission to detect the \(model.hotkey.name) key and paste text for you.")
                 .font(.system(size: 14))
                 .foregroundColor(Theme.ink.opacity(0.7))
                 .fixedSize(horizontal: false, vertical: true)
@@ -323,6 +330,13 @@ struct HomePage: View {
 
 struct SettingsPage: View {
     @ObservedObject var model: AppModel
+    @State private var provider = Preferences.cleanupProvider
+    @State private var modelName = Preferences.model(for: Preferences.cleanupProvider)
+    @State private var baseURL = Preferences.openAIBaseURL
+    @State private var keyDraft = ""
+    @State private var hasKey = Preferences.apiKey(for: Preferences.cleanupProvider) != nil
+    @State private var testResult = ""
+    @State private var testing = false
 
     var body: some View {
         ScrollView {
@@ -333,7 +347,7 @@ struct SettingsPage: View {
                     check("Accessibility", model.accessibility, "Detect the hotkey and paste text")
                     divider
                     check("Key listener", model.keyListener,
-                          model.accessibility && !model.keyListener ? "Quit and reopen MiniDictate" : "Listening for right Option")
+                          model.accessibility && !model.keyListener ? "Quit and reopen MiniDictate" : "Listening for \(model.hotkey.name)")
                     divider
                     check("Microphone", model.microphone, "Record while the key is held")
                     divider
@@ -344,12 +358,23 @@ struct SettingsPage: View {
                 }
 
                 section("DICTATION") {
-                    line("Hotkey", "Hold right Option (⌥)")
+                    row("Hold to dictate") {
+                        Picker("", selection: $model.hotkey) {
+                            ForEach(Hotkey.allCases) { Text($0.title).tag($0) }
+                        }
+                        .pickerStyle(.segmented).labelsHidden().frame(width: 400)
+                    }
                     divider
                     line("Transcription", model.engine)
                     divider
                     line("Config file", "~/.minidictate.json")
                 }
+
+                if model.hotkey == .fn {
+                    note("If holding Fn opens the emoji picker or starts Apple Dictation, set System Settings → Keyboard → \"Press 🌐 key to\" to \"Do Nothing\".")
+                }
+
+                cleanupSection
 
                 section("DATA") {
                     line("History", "\(model.history.count) dictations, stored on this Mac")
@@ -363,6 +388,104 @@ struct SettingsPage: View {
     }
 
     private var divider: some View { Rectangle().fill(Theme.line).frame(height: 1) }
+
+    // MARK: AI cleanup
+
+    @ViewBuilder private var cleanupSection: some View {
+        section("AI CLEANUP (OPTIONAL)") {
+            row("Provider") {
+                Picker("", selection: $provider) {
+                    ForEach(CleanupProvider.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented).labelsHidden().frame(width: 330)
+            }
+            if provider != .off {
+                divider
+                row("API key") {
+                    SecureField(hasKey ? "Saved in Keychain" : (provider == .openAI ? "Paste key (leave empty for a local server)" : "Paste your key"),
+                                text: $keyDraft)
+                        .textFieldStyle(.roundedBorder).frame(width: 250)
+                    Button("Save") {
+                        hasKey = Preferences.setAPIKey(keyDraft, for: provider) && !keyDraft.isEmpty
+                        keyDraft = ""
+                    }
+                    .disabled(keyDraft.isEmpty)
+                    if hasKey {
+                        Button("Remove") {
+                            Preferences.setAPIKey(nil, for: provider)
+                            hasKey = false
+                        }
+                    }
+                }
+                divider
+                row("Model") {
+                    TextField(provider.defaultModel, text: $modelName)
+                        .textFieldStyle(.roundedBorder).frame(width: 250)
+                        .onChange(of: modelName) { Preferences.setModel($0, for: provider) }
+                }
+                if provider == .openAI {
+                    divider
+                    row("Base URL") {
+                        TextField(Preferences.defaultOpenAIBaseURL, text: $baseURL)
+                            .textFieldStyle(.roundedBorder).frame(width: 330)
+                            .onChange(of: baseURL) { Preferences.openAIBaseURL = $0 }
+                    }
+                }
+                divider
+                row("Check it works") {
+                    if testing { ProgressView().controlSize(.small) }
+                    Button("Send a test sentence") {
+                        testing = true
+                        testResult = ""
+                        Task { @MainActor in
+                            let sample = "um so i think we should uh meet on tuesday no wait wednesday at like three pm"
+                            let outcome = await Cleanup.run(sample)
+                            testResult = outcome.cleaned ? "\(outcome.note): \"\(outcome.text)\"" : outcome.note
+                            testing = false
+                        }
+                    }
+                    .disabled(testing)
+                }
+                if !testResult.isEmpty {
+                    divider
+                    Text(testResult)
+                        .font(.system(size: 13)).foregroundColor(Theme.ink.opacity(0.75))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16).padding(.vertical, 13)
+                }
+                if !model.cleanupNote.isEmpty {
+                    divider
+                    line("Last dictation", model.cleanupNote)
+                }
+            }
+        }
+        .onChange(of: provider) { newValue in
+            Preferences.cleanupProvider = newValue
+            modelName = Preferences.model(for: newValue)
+            hasKey = Preferences.apiKey(for: newValue) != nil
+            keyDraft = ""
+            testResult = ""
+        }
+        note(provider == .off
+             ? "Off: the transcript is pasted exactly as Whisper wrote it. Turn this on to have an LLM fix punctuation and remove filler words, using your own API key."
+             : "Your transcript text is sent to this provider before it is pasted; audio stays on your Mac. The key is stored in the macOS Keychain. If a request fails, the raw transcript is pasted.")
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 12)).foregroundColor(Theme.ink.opacity(0.55))
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func row<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
+        HStack(spacing: 8) {
+            Text(label).font(.system(size: 14, weight: .medium))
+            Spacer()
+            content()
+        }
+        .padding(.horizontal, 16).padding(.vertical, 9)
+    }
 
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {

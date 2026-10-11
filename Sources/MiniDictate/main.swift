@@ -2,7 +2,7 @@ import AppKit
 import AVFoundation
 import Speech
 
-// Hold right Option to record, release to transcribe and paste into the focused app.
+// Hold the hotkey to record, release to transcribe and paste into the focused app.
 // Core.swift: recording, transcription, paste. UI.swift: hub window and dictation pill.
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -55,7 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.microphone = true
         model.speech = "On"
         model.engine = "Whisper \(WhisperEngine.modelName), on-device"
-        model.status = "Hold right Option to dictate"
+        model.status = "Hold \(model.hotkey.name) to dictate"
         model.demoPage = page == "settings" ? "Settings" : "Home"
         hub = HubWindow(model: model)
         hub.show(activate: false)
@@ -129,7 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var idleMessage: String {
-        if tap != nil { return "Hold right Option to dictate" }
+        if tap != nil { return "Hold \(model.hotkey.name) to dictate" }
         return AXIsProcessTrusted() ? "Accessibility is on but the key listener failed. Quit and reopen MiniDictate."
                                     : "Grant Accessibility in System Settings, then wait…"
     }
@@ -195,12 +195,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case .success(let text):
                     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
                     log("transcribed \(trimmed.count) characters, pasting=\(!trimmed.isEmpty)")
-                    if trimmed.isEmpty {
-                        self.set(.idle, "Heard nothing", pill: "Heard nothing")
-                    } else {
-                        paste(trimmed)
-                        self.model.add(text: trimmed, seconds: seconds)
-                        self.set(.idle, self.idleMessage)
+                    guard !trimmed.isEmpty else { return self.set(.idle, "Heard nothing", pill: "Heard nothing") }
+                    // One or two words have nothing to clean and aren't worth the delay.
+                    guard Cleanup.isOn, trimmed.split(whereSeparator: \.isWhitespace).count >= 3 else {
+                        return self.finish(trimmed, seconds: seconds)
+                    }
+                    self.set(.transcribing, "Polishing…")
+                    Task { @MainActor in
+                        let outcome = await Cleanup.run(trimmed)
+                        self.model.cleanupNote = outcome.note
+                        self.finish(outcome.text, seconds: seconds)
                     }
                 case .failure(let error):
                     log("transcription error: \(error)")
@@ -208,6 +212,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+    }
+
+    private func finish(_ text: String, seconds: Double) {
+        paste(text)
+        model.add(text: text, seconds: seconds)
+        set(.idle, idleMessage)
     }
 
     /// `pill` is a short message shown in the pill for a few seconds (errors only).
@@ -244,10 +254,23 @@ func tapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent,
     } else if type == .flagsChanged {
         let code = event.getIntegerValueField(.keyboardEventKeycode)
         log("modifier key code=\(code)")
-        guard code == hotkeyCode else { return Unmanaged.passUnretained(event) }
-        delegate.hotkey(down: event.flags.contains(.maskAlternate))
+        guard code == activeHotkey.keyCode else { return Unmanaged.passUnretained(event) }
+        delegate.hotkey(down: event.flags.contains(activeHotkey.flag))
     }
     return Unmanaged.passUnretained(event)
+}
+
+// Developer check: `MiniDictate --cleanup-probe anthropic|openAI` sends one request with a placeholder key,
+// to confirm the request reaches the provider and that a failure falls back to the raw text.
+if let flag = CommandLine.arguments.firstIndex(of: "--cleanup-probe"), CommandLine.arguments.count > flag + 1,
+   let provider = CleanupProvider(rawValue: CommandLine.arguments[flag + 1]) {
+    Task {
+        let outcome = await Cleanup.run("um so this is uh a test sentence", provider: provider, key: "placeholder-key",
+                                        model: provider.defaultModel, baseURL: Preferences.defaultOpenAIBaseURL)
+        print("text: \(outcome.text)\nnote: \(outcome.note)")
+        exit(0)
+    }
+    RunLoop.main.run()
 }
 
 // Developer check: `MiniDictate --transcribe file.wav` runs Whisper on a 16 kHz mono 16-bit WAV and prints the text.

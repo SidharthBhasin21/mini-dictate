@@ -2,9 +2,7 @@ import AppKit
 import AVFoundation
 import Speech
 
-// Hold right Option to record, release to transcribe and paste into the focused app.
 
-let hotkeyCode: Int64 = 61  // right Option
 let vKeyCode: CGKeyCode = 9
 
 // MARK: - Config (~/.minidictate.json, optional)
