@@ -7,7 +7,7 @@ import Speech
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var tap: CFMachPort?
-    private let model = AppModel()
+    private let model = AppModel(demo: demoPage != nil)
     private let recorder = Recorder()
     private let transcriber = Transcriber()
     private var statusItem: NSStatusItem!
@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.applicationIconImage = appIcon()
         NSApp.mainMenu = mainMenu()
+        if let demoPage { return startDemo(demoPage) }
         hub = HubWindow(model: model)
         pill = PillPanel(model: model)
         hub.show()
@@ -45,6 +46,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.refresh() }
         AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
         installTap()
+    }
+
+    /// Sample-data windows for screenshots: no microphone, hotkey, model download or real history.
+    private func startDemo(_ page: String) {
+        model.accessibility = true
+        model.keyListener = true
+        model.microphone = true
+        model.speech = "On"
+        model.engine = "Whisper \(WhisperEngine.modelName), on-device"
+        model.status = "Hold right Option to dictate"
+        model.demoPage = page == "settings" ? "Settings" : "Home"
+        hub = HubWindow(model: model)
+        hub.show(activate: false)
+        pill = PillPanel(model: model, backdrop: NSColor(white: 0.55, alpha: 1))
+        guard page == "recording" else { return }
+        model.phase = .recording
+        var tick = 0.0
+        Timer.scheduledTimer(withTimeInterval: 0.07, repeats: true) { [weak self] _ in
+            tick += 1
+            let level = 0.5 + 0.32 * sin(tick * 0.9) + 0.18 * sin(tick * 2.3)
+            self?.model.meter.push(Float(max(0.08, min(1, level))))
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -205,6 +228,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: work)
         }
     }
+}
+
+/// `MiniDictate --demo home|settings|recording` opens the app with sample data, for screenshots.
+let demoPage: String? = CommandLine.arguments.firstIndex(of: "--demo").map { index in
+    CommandLine.arguments.count > index + 1 ? CommandLine.arguments[index + 1] : "home"
 }
 
 let delegate = AppDelegate()

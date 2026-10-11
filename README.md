@@ -6,6 +6,18 @@ Speech is transcribed on your Mac with [Whisper](https://github.com/openai/whisp
 
 It was built as a minimal take on the dictation flow of apps like Wispr Flow: one hotkey, a live waveform while you talk, and a history of what you dictated.
 
+![MiniDictate home window showing stats and dictation history](docs/screenshots/home.png)
+
+While you hold the key, a pill at the bottom of the screen shows a live waveform of your voice:
+
+<img src="docs/screenshots/pill.png" alt="Recording pill with a live waveform" width="220">
+
+Settings shows the state of each permission and which transcription engine is active:
+
+![MiniDictate settings window](docs/screenshots/settings.png)
+
+The screenshots use sample data from the app's demo mode (see Troubleshooting).
+
 ## Features
 
 - **Hold-to-talk hotkey:** right Option (⌥), works in any app.
@@ -120,6 +132,10 @@ Sources/MiniDictate/
   MiniDictate.app/Contents/MacOS/MiniDictate --transcribe clip.wav
   ```
   The file must be 16 kHz mono 16-bit WAV.
+- **Demo mode:** opens the app with sample data and no microphone, hotkey or real history. This is how the screenshots above were taken.
+  ```bash
+  .build/release/MiniDictate --demo home        # or: settings, recording
+  ```
 
 ## Known limits
 

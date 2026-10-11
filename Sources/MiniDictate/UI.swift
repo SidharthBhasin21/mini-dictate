@@ -47,7 +47,23 @@ final class AppModel: ObservableObject {
         return directory.appendingPathComponent("history.json")
     }()
 
-    init() {
+    /// Demo mode shows sample data and never reads or writes the real history (used for screenshots).
+    let demo: Bool
+    var demoPage = "Home"
+
+    init(demo: Bool = false) {
+        self.demo = demo
+        if demo {
+            let samples: [(hoursAgo: Double, seconds: Double, text: String)] = [
+                (0.2, 7, "Can we move the design review to Thursday afternoon? I should have the new mockups ready by then."),
+                (1.5, 5, "Thanks for the quick turnaround, this looks great."),
+                (3.0, 9, "Add a note to the release checklist: update the changelog and tag the build before publishing."),
+                (26, 6, "Remind me to book the train tickets for next weekend."),
+                (28, 8, "The second paragraph is too long. Split it in two and lead with the customer quote."),
+            ]
+            history = samples.map { Entry(date: Date().addingTimeInterval(-$0.hoursAgo * 3600), text: $0.text, seconds: $0.seconds) }
+            return
+        }
         if let data = try? Data(contentsOf: historyURL),
            let saved = try? JSONDecoder().decode([Entry].self, from: data) {
             history = saved
@@ -66,6 +82,7 @@ final class AppModel: ObservableObject {
     }
 
     private func save() {
+        guard !demo else { return }
         try? JSONEncoder().encode(history).write(to: historyURL, options: .atomic)
     }
 
@@ -106,7 +123,12 @@ func openAccessibilitySettings() {
 
 struct HubView: View {
     @ObservedObject var model: AppModel
-    @State private var page = "Home"
+    @State private var page: String
+
+    init(model: AppModel) {
+        self.model = model
+        _page = State(initialValue: model.demoPage)
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -204,7 +226,8 @@ struct HomePage: View {
     }
 
     private var firstName: String {
-        NSFullUserName().split(separator: " ").first.map(String.init) ?? "there"
+        if model.demo { return "Sam" }
+        return NSFullUserName().split(separator: " ").first.map(String.init) ?? "there"
     }
 
     private func stat(_ emoji: String, _ value: String) -> some View {
@@ -384,11 +407,12 @@ final class HubWindow {
         window.contentView = NSHostingView(rootView: HubView(model: model))
     }
 
-    func show() {
+    func show(activate: Bool = true) {
         if !window.isVisible, let screen = screenUnderMouse()?.visibleFrame {
             window.setFrameOrigin(NSPoint(x: screen.midX - window.frame.width / 2,
                                           y: screen.midY - window.frame.height / 2))
         }
+        guard activate else { return window.orderFront(nil) }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -473,12 +497,13 @@ final class PillPanel {
     private let panel: NSPanel
     private let size = NSSize(width: 460, height: 64)
 
-    init(model: AppModel) {
+    /// `backdrop` fills the normally transparent panel, so the pill is visible in a screenshot.
+    init(model: AppModel, backdrop: NSColor? = nil) {
         panel = NSPanel(contentRect: NSRect(origin: .zero, size: size),
                         styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.level = .statusBar
         panel.isOpaque = false
-        panel.backgroundColor = .clear
+        panel.backgroundColor = backdrop ?? .clear
         panel.hasShadow = false
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
