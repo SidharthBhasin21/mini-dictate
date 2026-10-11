@@ -27,6 +27,10 @@ The screenshots use sample data from the app's demo mode (see Troubleshooting).
 - **History window** with streak, word count and words-per-minute.
 - **Optional hosted transcription** through any OpenAI-compatible endpoint.
 
+## Download
+
+Get `MiniDictate.dmg` from the [latest release](https://github.com/SidharthBhasin21/mini-dictate/releases/latest), then follow [Install on another Mac](#install-on-another-mac) for the first-launch step.
+
 ## Requirements
 
 - Apple Silicon Mac
