@@ -577,6 +577,7 @@ struct SettingsPage: View {
 
 final class HubWindow {
     private let window: NSWindow
+    private let demo: Bool
 
     init(model: AppModel) {
         // `-windowHeight N` on the command line makes a taller window, for full-page screenshots.
@@ -584,6 +585,7 @@ final class HubWindow {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 960, height: height),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
+        demo = model.demo
         window.title = "MiniDictate"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
@@ -594,7 +596,9 @@ final class HubWindow {
     }
 
     func show(activate: Bool = true) {
-        if !window.isVisible, let screen = screenUnderMouse()?.visibleFrame {
+        // Demo windows open on the sharpest display, so screenshots come out at full resolution.
+        let target = demo ? NSScreen.screens.max { $0.backingScaleFactor < $1.backingScaleFactor } : screenUnderMouse()
+        if !window.isVisible, let screen = target?.visibleFrame {
             window.setFrameOrigin(NSPoint(x: screen.midX - window.frame.width / 2,
                                           y: screen.midY - window.frame.height / 2))
         }
