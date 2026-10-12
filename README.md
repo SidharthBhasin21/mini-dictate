@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/icon.png" alt="MiniDictate app icon" width="128"></p>
+
 # MiniDictate
 
 A small push-to-talk dictation app for macOS. Hold a hotkey, speak, release, and your words are pasted at the cursor in whatever app you're using.

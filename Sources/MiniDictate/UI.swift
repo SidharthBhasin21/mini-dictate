@@ -170,7 +170,7 @@ struct HubView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                Image(systemName: "waveform").font(.system(size: 16, weight: .bold))
+                LogoMark().frame(width: 24, height: 24)
                 Text("MiniDictate").font(.system(size: 17, weight: .semibold))
             }
             .padding(.top, 46).padding(.horizontal, 10).padding(.bottom, 16)
@@ -200,6 +200,25 @@ struct HubView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// The app icon's mark (a waveform on a dark rounded square), drawn to match Resources/AppIcon.icns.
+struct LogoMark: View {
+    private let heights: [CGFloat] = [150, 300, 470, 250, 400, 210, 110]
+
+    var body: some View {
+        GeometryReader { geometry in
+            let side = min(geometry.size.width, geometry.size.height)
+            let unit = side / 824  // the icon's tile is 824 units wide
+            HStack(spacing: 38 * unit) {
+                ForEach(heights.indices, id: \.self) { index in
+                    Capsule().fill(Color.white).frame(width: 58 * unit, height: heights[index] * unit)
+                }
+            }
+            .frame(width: side, height: side)
+            .background(RoundedRectangle(cornerRadius: 186 * unit, style: .continuous).fill(Theme.ink))
+        }
     }
 }
 
