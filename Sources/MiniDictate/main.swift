@@ -283,13 +283,13 @@ if let flag = CommandLine.arguments.firstIndex(of: "--cleanup-probe"), CommandLi
 
 // Developer check: `MiniDictate --transcribe file.wav` runs Whisper on a 16 kHz mono 16-bit WAV and prints the text.
 if let flag = CommandLine.arguments.firstIndex(of: "--transcribe"), CommandLine.arguments.count > flag + 1 {
-    // An optional third argument picks the model by name: tiny, base, small or largeTurbo.
+    // An optional third argument picks the model by name: tiny, base, small, largeTurbo or hinglish.
     let name = CommandLine.arguments.count > flag + 2 ? CommandLine.arguments[flag + 2] : "base"
     let chosen = WhisperModel.allCases.first { "\($0)" == name } ?? .base
     let engine = WhisperEngine()
     engine.load(chosen)
     while engine.loading != nil { RunLoop.main.run(until: Date().addingTimeInterval(0.2)) }
-    guard engine.isReady, let wav = FileManager.default.contents(atPath: CommandLine.arguments[flag + 1]) else {
+    guard engine.active == chosen, let wav = FileManager.default.contents(atPath: CommandLine.arguments[flag + 1]) else {
         print("failed: \(engine.failure ?? "unknown")")
         exit(1)
     }

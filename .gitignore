@@ -11,3 +11,6 @@ DerivedData/
 
 # macOS
 .DS_Store
+
+# Converted model archives (published as release assets, not committed)
+model-artifacts/

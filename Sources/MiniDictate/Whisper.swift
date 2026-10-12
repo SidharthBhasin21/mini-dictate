@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import WhisperKit
 
@@ -7,8 +8,20 @@ enum WhisperModel: String, CaseIterable, Identifiable {
     case base = "openai_whisper-base"
     case small = "openai_whisper-small_216MB"
     case largeTurbo = "openai_whisper-large-v3-v20240930_626MB"
+    /// Oriserve's Whisper-Hindi2Hinglish-Swift (a fine-tune of Whisper base, Apache 2.0), converted to Core ML.
+    /// It writes mixed Hindi-English speech in Roman script.
+    case hinglish = "Oriserve_Whisper-Hindi2Hinglish-Swift"
 
     var id: String { rawValue }
+
+    /// Where a model that WhisperKit's own repository doesn't carry is downloaded from, as a zip of its folder.
+    var hostedZip: (url: URL, sha256: String)? {
+        guard self == .hinglish else { return nil }
+        return (URL(string: "https://github.com/SidharthBhasin21/mini-dictate/releases/download/models-v1/Whisper-Hindi2Hinglish-Swift-coreml.zip")!, "b8b2749d5730fb524ec4cfaca52110b5a43916cf1b6fc026eeeb5eef0a6e83e9")
+    }
+
+    /// The language to decode as, when the model must not detect it. The Hinglish model is trained to be run as English.
+    var fixedLanguage: String? { self == .hinglish ? "en" : nil }
 
     var title: String {
         switch self {
@@ -16,6 +29,7 @@ enum WhisperModel: String, CaseIterable, Identifiable {
         case .base: return "Base"
         case .small: return "Small"
         case .largeTurbo: return "Large v3 Turbo"
+        case .hinglish: return "Hinglish"
         }
     }
 
@@ -25,6 +39,7 @@ enum WhisperModel: String, CaseIterable, Identifiable {
         case .base: return "145 MB"
         case .small: return "217 MB"
         case .largeTurbo: return "627 MB"
+        case .hinglish: return "140 MB"
         }
     }
 
@@ -34,6 +49,7 @@ enum WhisperModel: String, CaseIterable, Identifiable {
         case .base: return "fast, good for clear speech"
         case .small: return "more accurate, a little slower"
         case .largeTurbo: return "most accurate, slowest"
+        case .hinglish: return "Hindi + English, Roman script"
         }
     }
 }
@@ -59,7 +75,8 @@ final class WhisperEngine {
     }
 
     private static func folder(for model: WhisperModel) -> URL {
-        modelsDirectory.appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(model.rawValue)")
+        let parent = model.hostedZip == nil ? "models/argmaxinc/whisperkit-coreml" : "custom"
+        return modelsDirectory.appendingPathComponent("\(parent)/\(model.rawValue)")
     }
 
     /// Models that have files on disk, with the space each one takes.
@@ -132,8 +149,16 @@ final class WhisperEngine {
     /// Downloads the model if needed, loads it, and runs a warm-up pass.
     private static func make(_ model: WhisperModel, in directory: URL,
                              progress: @escaping @Sendable (Double) -> Void) async throws -> WhisperKit {
-        let folder = try await WhisperKit.download(variant: model.rawValue, downloadBase: directory) {
-            progress($0.fractionCompleted)
+        let folder: URL
+        if let hosted = model.hostedZip {
+            folder = Self.folder(for: model)
+            if !FileManager.default.fileExists(atPath: folder.appendingPathComponent("TextDecoder.mlmodelc").path) {
+                try await fetch(hosted.url, sha256: hosted.sha256, into: folder.deletingLastPathComponent(), progress: progress)
+            }
+        } else {
+            folder = try await WhisperKit.download(variant: model.rawValue, downloadBase: directory) {
+                progress($0.fractionCompleted)
+            }
         }
         let kit = try await WhisperKit(WhisperKitConfig(model: model.rawValue, downloadBase: directory,
                                                         modelFolder: folder.path, verbose: false,
@@ -143,13 +168,51 @@ final class WhisperEngine {
         return kit
     }
 
+    /// Downloads a zip, checks it against the expected SHA-256, and unpacks it into `directory`.
+    private static func fetch(_ url: URL, sha256: String, into directory: URL,
+                              progress: @escaping @Sendable (Double) -> Void) async throws {
+        let zip: URL = try await withCheckedThrowingContinuation { continuation in
+            var observation: NSKeyValueObservation?
+            let task = URLSession.shared.downloadTask(with: url) { file, response, error in
+                observation?.invalidate()
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                guard let file, error == nil, status == 200 else {
+                    return continuation.resume(throwing: error ?? DictationError("Model download failed (HTTP \(status))"))
+                }
+                // The temporary file is deleted when this handler returns, so move it first.
+                let kept = FileManager.default.temporaryDirectory.appendingPathComponent("minidictate-\(UUID().uuidString).zip")
+                do {
+                    try FileManager.default.moveItem(at: file, to: kept)
+                    continuation.resume(returning: kept)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+            observation = task.progress.observe(\.fractionCompleted) { value, _ in progress(value.fractionCompleted) }
+            task.resume()
+        }
+        defer { try? FileManager.default.removeItem(at: zip) }
+
+        let digest = SHA256.hash(data: try Data(contentsOf: zip, options: .mappedIfSafe))
+        guard digest.map({ String(format: "%02x", $0) }).joined() == sha256 else {
+            throw DictationError("Downloaded model failed its integrity check")
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let unzip = Process()
+        unzip.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        unzip.arguments = ["-x", "-k", zip.path, directory.path]
+        try unzip.run()
+        unzip.waitUntilExit()
+        guard unzip.terminationStatus == 0 else { throw DictationError("Could not unpack the model") }
+    }
+
     /// `wav` is 16 kHz mono 16-bit PCM with a 44-byte header, as produced by Recorder.
     func transcribe(wav: Data, language: String?) async throws -> String {
         guard let kit else { throw DictationError("Whisper model is not loaded") }
         let samples: [Float] = Data(wav.dropFirst(44)).withUnsafeBytes { raw in
             raw.bindMemory(to: Int16.self).map { Float($0) / 32768 }
         }
-        let code = language.map { String($0.prefix(2)).lowercased() }
+        let code = active?.fixedLanguage ?? language.map { String($0.prefix(2)).lowercased() }
         let options = DecodingOptions(language: code, detectLanguage: code == nil,
                                       skipSpecialTokens: true, withoutTimestamps: true)
         let results = try await kit.transcribe(audioArray: samples, decodeOptions: options)

@@ -23,8 +23,8 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
     <key>CFBundleName</key><string>MiniDictate</string>
     <key>CFBundleExecutable</key><string>MiniDictate</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.3.0</string>
-    <key>CFBundleVersion</key><string>3</string>
+    <key>CFBundleShortVersionString</key><string>0.4.0</string>
+    <key>CFBundleVersion</key><string>4</string>
     <key>LSMinimumSystemVersion</key><string>13.0</string>
     <key>NSMicrophoneUsageDescription</key><string>MiniDictate records your voice while you hold the dictation key.</string>
     <key>NSSpeechRecognitionUsageDescription</key><string>MiniDictate turns your speech into text.</string>

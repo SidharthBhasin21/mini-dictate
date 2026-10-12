@@ -22,6 +22,7 @@ The screenshots use sample data from the app's demo mode (see Troubleshooting).
 
 - **Hold-to-talk hotkey**, works in any app. Choose right Option (⌥), right Command (⌘) or Fn (🌐) in Settings.
 - **On-device transcription** with Whisper. Choose the model in Settings: Tiny, Base (default), Small or Large v3 Turbo.
+- **Hinglish:** an optional model that writes mixed Hindi-English speech in Roman script ("Kal subah meeting hai, please presentation ready rakhna").
 - **Live waveform pill** at the bottom of the screen while recording, on whichever display the pointer is on.
 - **Paste at the cursor**, with the previous clipboard contents restored afterwards.
 - **History window** with streak, word count and words-per-minute.
@@ -91,6 +92,9 @@ xattr -dr com.apple.quarantine /Applications/MiniDictate.app
 | Base (default) | 145 MB | Fast, good for clear speech |
 | Small | 217 MB | More accurate, a little slower |
 | Large v3 Turbo | 627 MB | Most accurate, slowest |
+| Hinglish | 140 MB | Hindi and English mixed, written in Roman script; as fast as Base |
+
+The Hinglish model is [Oriserve's Whisper-Hindi2Hinglish-Swift](https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Swift) (a fine-tune of Whisper base, Apache 2.0), converted to Core ML. It is downloaded from this repository's `models-v1` release and checked against a SHA-256 before use. Plain English dictation works on it too.
 
 Downloaded models are listed at the bottom of Settings with their size, and any model that isn't in use can be removed there to free disk space.
 
@@ -163,7 +167,7 @@ Sources/MiniDictate/
   ```bash
   MiniDictate.app/Contents/MacOS/MiniDictate --transcribe clip.wav
   ```
-  The file must be 16 kHz mono 16-bit WAV. Add `tiny`, `base`, `small` or `largeTurbo` after the file to pick the model.
+  The file must be 16 kHz mono 16-bit WAV. Add `tiny`, `base`, `small`, `largeTurbo` or `hinglish` after the file to pick the model.
 - **Demo mode:** opens the app with sample data and no microphone, hotkey or real history. This is how the screenshots above were taken.
   ```bash
   .build/release/MiniDictate --demo home        # or: settings, recording
@@ -174,4 +178,4 @@ Sources/MiniDictate/
 - Paste assumes the V key is in its QWERTY position.
 - The hotkey is a modifier key, so using it in a shortcut (for example typing Option characters with right Option) also starts a recording.
 - The default `base` model is small; expect mistakes on names, accents and fast speech, or pick a larger model.
-- Mixed Hindi-English (Hinglish) speech is not handled well by the stock Whisper models.
+- Mixed Hindi-English (Hinglish) speech is not handled well by the stock Whisper models; use the Hinglish model for it.
