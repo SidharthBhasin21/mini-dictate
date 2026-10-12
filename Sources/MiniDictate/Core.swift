@@ -126,8 +126,8 @@ final class Transcriber {
         if let key = config.apiKey, !key.isEmpty {
             log("engine: hosted")
             hosted(wav: wav, key: key, config: config, completion: finish)
-        } else if whisper.state == .ready {
-            log("engine: whisper")
+        } else if whisper.isReady {
+            log("engine: whisper \(whisper.active?.title ?? "")")
             Task {
                 do { finish(.success(try await whisper.transcribe(wav: wav, language: config.language))) }
                 catch { finish(.failure(error)) }

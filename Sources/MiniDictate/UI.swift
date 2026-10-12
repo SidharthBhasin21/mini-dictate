@@ -37,6 +37,17 @@ final class AppModel: ObservableObject {
     @Published var speech = "Asked on first dictation"
     @Published var engine = ""
     @Published var cleanupNote = ""
+    var onModelChange: (WhisperModel) -> Void = { _ in }
+    /// The models the engine has loaded or is fetching; these can't be removed from disk.
+    @Published var activeWhisper: WhisperModel?
+    @Published var loadingWhisper: WhisperModel?
+    @Published var whisperModel = Preferences.whisperModel {
+        didSet {
+            guard whisperModel != oldValue else { return }
+            Preferences.whisperModel = whisperModel
+            onModelChange(whisperModel)
+        }
+    }
     @Published var hotkey = Preferences.hotkey {
         didSet {
             Preferences.hotkey = hotkey
@@ -145,6 +156,7 @@ struct HubView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(RoundedRectangle(cornerRadius: 14).fill(Color.white))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.line))
             .padding([.top, .trailing, .bottom], 10)
         }
@@ -337,8 +349,21 @@ struct SettingsPage: View {
     @State private var hasKey = Preferences.apiKey(for: Preferences.cleanupProvider) != nil
     @State private var testResult = ""
     @State private var testing = false
+    @State private var downloads = WhisperEngine.downloaded()
 
     var body: some View {
+        ScrollViewReader { scroll in
+            settingsContent
+                // Choosing a provider adds rows below the picker; bring the whole section into view.
+                .onChange(of: provider) { _ in
+                    DispatchQueue.main.async {
+                        withAnimation(.easeInOut(duration: 0.25)) { scroll.scrollTo("cleanup", anchor: .top) }
+                    }
+                }
+        }
+    }
+
+    private var settingsContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 Text("Settings").font(.system(size: 26, weight: .medium, design: .serif))
@@ -362,7 +387,14 @@ struct SettingsPage: View {
                         Picker("", selection: $model.hotkey) {
                             ForEach(Hotkey.allCases) { Text($0.title).tag($0) }
                         }
-                        .pickerStyle(.segmented).labelsHidden().frame(width: 400)
+                        .pickerStyle(.segmented).labelsHidden().fixedSize()
+                    }
+                    divider
+                    row("Whisper model") {
+                        Picker("", selection: $model.whisperModel) {
+                            ForEach(WhisperModel.allCases) { Text("\($0.title) · \($0.size) · \($0.summary)").tag($0) }
+                        }
+                        .labelsHidden().fixedSize()
                     }
                     divider
                     line("Transcription", model.engine)
@@ -370,11 +402,35 @@ struct SettingsPage: View {
                     line("Config file", "~/.minidictate.json")
                 }
 
+                note("A model downloads the first time you pick it and stays on this Mac. The current model keeps working until the new one is ready.")
                 if model.hotkey == .fn {
                     note("If holding Fn opens the emoji picker or starts Apple Dictation, set System Settings → Keyboard → \"Press 🌐 key to\" to \"Do Nothing\".")
                 }
 
-                cleanupSection
+                VStack(alignment: .leading, spacing: 22) { cleanupSection }.id("cleanup")
+
+                section("DOWNLOADED MODELS") {
+                    ForEach(Array(downloads.enumerated()), id: \.element.model) { index, item in
+                        if index > 0 { divider }
+                        row("\(item.model.title)") {
+                            Text(ByteCountFormatter.string(fromByteCount: item.bytes, countStyle: .file))
+                                .font(.system(size: 13)).foregroundColor(Theme.ink.opacity(0.6))
+                            if isInUse(item.model) {
+                                Text("In use").font(.system(size: 13, weight: .medium)).frame(width: 70)
+                            } else {
+                                Button("Remove") {
+                                    WhisperEngine.remove(item.model)
+                                    downloads = WhisperEngine.downloaded()
+                                }
+                                .frame(width: 70)
+                            }
+                        }
+                    }
+                    if downloads.isEmpty { line("None yet", "") }
+                }
+                .onAppear { downloads = WhisperEngine.downloaded() }
+                .onChange(of: model.engine) { _ in downloads = WhisperEngine.downloaded() }
+                note("Removing a model frees its disk space. It downloads again if you pick it later. The model in use can't be removed.")
 
                 section("DATA") {
                     line("History", "\(model.history.count) dictations, stored on this Mac")
@@ -389,6 +445,10 @@ struct SettingsPage: View {
 
     private var divider: some View { Rectangle().fill(Theme.line).frame(height: 1) }
 
+    private func isInUse(_ whisper: WhisperModel) -> Bool {
+        whisper == model.whisperModel || whisper == model.activeWhisper || whisper == model.loadingWhisper
+    }
+
     // MARK: AI cleanup
 
     @ViewBuilder private var cleanupSection: some View {
@@ -397,14 +457,14 @@ struct SettingsPage: View {
                 Picker("", selection: $provider) {
                     ForEach(CleanupProvider.allCases) { Text($0.title).tag($0) }
                 }
-                .pickerStyle(.segmented).labelsHidden().frame(width: 330)
+                .pickerStyle(.segmented).labelsHidden().fixedSize()
             }
             if provider != .off {
                 divider
                 row("API key") {
-                    SecureField(hasKey ? "Saved in Keychain" : (provider == .openAI ? "Paste key (leave empty for a local server)" : "Paste your key"),
+                    SecureField(hasKey ? "Saved in Keychain" : (provider == .openAI ? "Paste key (not needed for a local server)" : "Paste your key"),
                                 text: $keyDraft)
-                        .textFieldStyle(.roundedBorder).frame(width: 250)
+                        .textFieldStyle(.roundedBorder).frame(width: 290)
                     Button("Save") {
                         hasKey = Preferences.setAPIKey(keyDraft, for: provider) && !keyDraft.isEmpty
                         keyDraft = ""
@@ -519,13 +579,16 @@ final class HubWindow {
     private let window: NSWindow
 
     init(model: AppModel) {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 960, height: 640),
+        // `-windowHeight N` on the command line makes a taller window, for full-page screenshots.
+        let height = max(640, UserDefaults.standard.double(forKey: "windowHeight"))
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 960, height: height),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
         window.title = "MiniDictate"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
+        window.contentMinSize = NSSize(width: 860, height: 580)
         window.appearance = NSAppearance(named: .aqua)
         window.contentView = NSHostingView(rootView: HubView(model: model))
     }

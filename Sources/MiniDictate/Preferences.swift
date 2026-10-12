@@ -83,6 +83,17 @@ enum Preferences {
         set { defaults.set(newValue.rawValue, forKey: "hotkey") }
     }
 
+    static var whisperModel: WhisperModel {
+        get { defaults.string(forKey: "whisperModel").flatMap(WhisperModel.init(rawValue:)) ?? .base }
+        set { defaults.set(newValue.rawValue, forKey: "whisperModel") }
+    }
+
+    /// The last model that finished loading, i.e. one known to be fully downloaded.
+    static var lastLoadedWhisperModel: WhisperModel? {
+        get { defaults.string(forKey: "lastLoadedWhisperModel").flatMap(WhisperModel.init(rawValue:)) }
+        set { defaults.set(newValue?.rawValue, forKey: "lastLoadedWhisperModel") }
+    }
+
     static var cleanupProvider: CleanupProvider {
         get { defaults.string(forKey: "cleanupProvider").flatMap(CleanupProvider.init(rawValue:)) ?? .off }
         set { defaults.set(newValue.rawValue, forKey: "cleanupProvider") }

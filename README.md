@@ -2,7 +2,7 @@
 
 A small push-to-talk dictation app for macOS. Hold a hotkey, speak, release, and your words are pasted at the cursor in whatever app you're using.
 
-Speech is transcribed on your Mac with [Whisper](https://github.com/openai/whisper) (the multilingual `base` model, via [WhisperKit](https://github.com/argmaxinc/WhisperKit)). No account, API key or internet connection is needed after the first launch.
+Speech is transcribed on your Mac with [Whisper](https://github.com/openai/whisper), via [WhisperKit](https://github.com/argmaxinc/WhisperKit). No account, API key or internet connection is needed after the first launch.
 
 It was built as a minimal take on the dictation flow of apps like Wispr Flow: one hotkey, a live waveform while you talk, and a history of what you dictated.
 
@@ -21,7 +21,7 @@ The screenshots use sample data from the app's demo mode (see Troubleshooting).
 ## Features
 
 - **Hold-to-talk hotkey**, works in any app. Choose right Option (⌥), right Command (⌘) or Fn (🌐) in Settings.
-- **On-device transcription:** Whisper `base`, with the language detected per dictation.
+- **On-device transcription** with Whisper. Choose the model in Settings: Tiny, Base (default), Small or Large v3 Turbo.
 - **Live waveform pill** at the bottom of the screen while recording, on whichever display the pointer is on.
 - **Paste at the cursor**, with the previous clipboard contents restored afterwards.
 - **History window** with streak, word count and words-per-minute.
@@ -45,7 +45,7 @@ Get `MiniDictate.dmg` from the [latest release](https://github.com/SidharthBhasi
 open MiniDictate.app
 ```
 
-The first build fetches WhisperKit. The first launch downloads the Whisper model (about 145 MB) into `~/Library/Application Support/MiniDictate/models`; until that finishes, dictation falls back to Apple's built-in speech recognizer.
+The first build fetches WhisperKit. The first launch downloads the default Whisper model (about 145 MB) into `~/Library/Application Support/MiniDictate/models`; until that finishes, dictation falls back to Apple's built-in speech recognizer.
 
 ### Permissions
 
@@ -83,6 +83,17 @@ xattr -dr com.apple.quarantine /Applications/MiniDictate.app
 
 ## Settings
 
+**Whisper model.** Settings → Dictation lets you trade speed for accuracy. A model downloads the first time you pick it, and the current one keeps working until the new one is ready.
+
+| Model | Download | Notes |
+|---|---|---|
+| Tiny | 77 MB | Fastest, most mistakes |
+| Base (default) | 145 MB | Fast, good for clear speech |
+| Small | 217 MB | More accurate, a little slower |
+| Large v3 Turbo | 627 MB | Most accurate, slowest |
+
+Downloaded models are listed at the bottom of Settings with their size, and any model that isn't in use can be removed there to free disk space.
+
 **Hotkey.** Settings → Dictation lets you pick the key to hold: right Option, right Command, or Fn. If holding Fn opens the emoji picker or Apple Dictation, set System Settings → Keyboard → "Press 🌐 key to" to "Do Nothing".
 
 **AI cleanup.** Off by default, in which case the transcript is pasted exactly as Whisper wrote it. To turn it on, open Settings → AI cleanup, pick a provider, paste your API key and click Save:
@@ -92,7 +103,7 @@ xattr -dr com.apple.quarantine /Applications/MiniDictate.app
 | Claude | An Anthropic API key | `claude-opus-5-5` (`claude-haiku-5-5` is faster and cheaper) |
 | OpenAI-compatible | A key and a base URL: OpenAI, Groq, OpenRouter, or a local server such as Ollama (no key) | `gpt-4o-mini` |
 
-The model name is editable. "Send a test sentence" checks the key without dictating. When cleanup is on, the transcript text is sent to that provider; audio never leaves the Mac. Keys are stored in the macOS Keychain, not in a file. If a request fails or the reply looks wrong, the raw transcript is pasted instead. Dictations of one or two words skip cleanup.
+The model name is editable. "Send a test sentence" checks the key without dictating. Without a key, requests are only sent to a server on the same Mac (`localhost`). When cleanup is on, the transcript text is sent to that provider; audio never leaves the Mac. Keys are stored in the macOS Keychain, not in a file. If a request fails or the reply looks wrong, the raw transcript is pasted instead. Dictations of one or two words skip cleanup.
 
 ## Configuration file
 
@@ -152,7 +163,7 @@ Sources/MiniDictate/
   ```bash
   MiniDictate.app/Contents/MacOS/MiniDictate --transcribe clip.wav
   ```
-  The file must be 16 kHz mono 16-bit WAV.
+  The file must be 16 kHz mono 16-bit WAV. Add `tiny`, `base`, `small` or `largeTurbo` after the file to pick the model.
 - **Demo mode:** opens the app with sample data and no microphone, hotkey or real history. This is how the screenshots above were taken.
   ```bash
   .build/release/MiniDictate --demo home        # or: settings, recording
@@ -162,5 +173,5 @@ Sources/MiniDictate/
 
 - Paste assumes the V key is in its QWERTY position.
 - The hotkey is a modifier key, so using it in a shortcut (for example typing Option characters with right Option) also starts a recording.
-- Whisper `base` is a small model; expect mistakes on names, accents and fast speech.
-- Mixed Hindi-English (Hinglish) speech is not handled well by this model.
+- The default `base` model is small; expect mistakes on names, accents and fast speech, or pick a larger model.
+- Mixed Hindi-English (Hinglish) speech is not handled well by the stock Whisper models.

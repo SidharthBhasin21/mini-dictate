@@ -45,6 +45,11 @@ enum Cleanup {
                 guard !key.isEmpty else { throw DictationError("No API key saved") }
                 reply = try await anthropic(raw, key: key, model: model)
             case .openAI:
+                // Only a server on this Mac may be used without a key; never send a transcript elsewhere unauthenticated.
+                let host = URL(string: baseURL)?.host ?? ""
+                guard !key.isEmpty || ["localhost", "127.0.0.1", "::1"].contains(host) else {
+                    throw DictationError("No API key saved")
+                }
                 reply = try await openAICompatible(raw, key: key, model: model, baseURL: baseURL)
             }
             let result = reply.trimmingCharacters(in: .whitespacesAndNewlines)

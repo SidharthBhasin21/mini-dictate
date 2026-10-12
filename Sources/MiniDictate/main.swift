@@ -37,7 +37,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         log("launched, accessibility trusted=\(AXIsProcessTrusted())")
         AVCaptureDevice.requestAccess(for: .audio) { granted in log("microphone granted=\(granted)") }
         model.onTest = { [weak self] in self?.toggleTest() }
-        transcriber.whisper.load()
+        transcriber.whisper.load(model.whisperModel)
+        model.onModelChange = { [weak self] in self?.transcriber.whisper.load($0) }
         recorder.onLevel = { [weak self] level in
             guard let self, self.model.phase == .recording else { return }
             self.model.meter.push(level)
@@ -54,7 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.keyListener = true
         model.microphone = true
         model.speech = "On"
-        model.engine = "Whisper \(WhisperEngine.modelName), on-device"
+        model.engine = "Whisper \(model.whisperModel.title), on-device"
         model.status = "Hold \(model.hotkey.name) to dictate"
         model.demoPage = page == "settings" ? "Settings" : "Home"
         hub = HubWindow(model: model)
@@ -148,14 +149,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .notDetermined: update(\.speech, "Asked on first dictation")
         default: update(\.speech, "Off")
         }
+        update(\.activeWhisper, transcriber.whisper.active)
+        update(\.loadingWhisper, transcriber.whisper.loading)
         let config = loadConfig()
         if !(config.apiKey ?? "").isEmpty {
             update(\.engine, "Hosted (\(config.model ?? "whisper-1"))")
         } else {
-            switch transcriber.whisper.state {
-            case .ready: update(\.engine, "Whisper \(WhisperEngine.modelName), on-device")
-            case .loading: update(\.engine, "Loading Whisper \(WhisperEngine.modelName)… (Apple until ready)")
-            case .failed: update(\.engine, "Apple on-device (Whisper failed to load)")
+            let whisper = transcriber.whisper
+            let current = whisper.active.map { "Whisper \($0.title), on-device" } ?? "Apple's recognizer"
+            if let loading = whisper.loading {
+                let percent = Int(whisper.progress * 100)
+                update(\.engine, "Getting \(loading.title): \(percent < 100 ? "\(percent)%" : "loading…") (using \(current) meanwhile)")
+            } else if whisper.failure != nil {
+                update(\.engine, "Couldn't load \(model.whisperModel.title); using \(current)")
+            } else {
+                update(\.engine, current)
             }
         }
         if model.phase == .idle, model.pillMessage == nil {
@@ -275,13 +283,17 @@ if let flag = CommandLine.arguments.firstIndex(of: "--cleanup-probe"), CommandLi
 
 // Developer check: `MiniDictate --transcribe file.wav` runs Whisper on a 16 kHz mono 16-bit WAV and prints the text.
 if let flag = CommandLine.arguments.firstIndex(of: "--transcribe"), CommandLine.arguments.count > flag + 1 {
+    // An optional third argument picks the model by name: tiny, base, small or largeTurbo.
+    let name = CommandLine.arguments.count > flag + 2 ? CommandLine.arguments[flag + 2] : "base"
+    let chosen = WhisperModel.allCases.first { "\($0)" == name } ?? .base
     let engine = WhisperEngine()
-    engine.load()
-    while engine.state == .loading { RunLoop.main.run(until: Date().addingTimeInterval(0.2)) }
-    guard engine.state == .ready, let wav = FileManager.default.contents(atPath: CommandLine.arguments[flag + 1]) else {
-        print("failed: \(engine.state)")
+    engine.load(chosen)
+    while engine.loading != nil { RunLoop.main.run(until: Date().addingTimeInterval(0.2)) }
+    guard engine.isReady, let wav = FileManager.default.contents(atPath: CommandLine.arguments[flag + 1]) else {
+        print("failed: \(engine.failure ?? "unknown")")
         exit(1)
     }
+    print("model: \(chosen.title)")
     Task {
         let started = Date()
         do { print(try await engine.transcribe(wav: wav, language: nil)) } catch { print("failed: \(error)") }
