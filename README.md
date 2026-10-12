@@ -142,6 +142,7 @@ With `apiKey` set, audio is uploaded to that endpoint. The key is stored in this
 Package.swift
 build.sh                  builds MiniDictate.app
 make-dmg.sh               builds dist/MiniDictate.dmg
+Resources/AppIcon.icns    app icon (regenerate with tools/make-icon.sh)
 Sources/MiniDictate/
   main.swift              app delegate, hotkey listener, dictation flow
   Core.swift              config, log, recorder, transcriber, paste

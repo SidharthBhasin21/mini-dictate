@@ -13,6 +13,7 @@ cp "$BIN/MiniDictate" "$APP/Contents/MacOS/MiniDictate"
 # Resource bundles from dependencies, if any.
 mkdir -p "$APP/Contents/Resources"
 find "$BIN" -maxdepth 1 -name "*.bundle" -exec cp -R {} "$APP/Contents/Resources/" \;
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -22,9 +23,10 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
     <key>CFBundleIdentifier</key><string>local.minidictate</string>
     <key>CFBundleName</key><string>MiniDictate</string>
     <key>CFBundleExecutable</key><string>MiniDictate</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.4.0</string>
-    <key>CFBundleVersion</key><string>4</string>
+    <key>CFBundleShortVersionString</key><string>0.4.1</string>
+    <key>CFBundleVersion</key><string>5</string>
     <key>LSMinimumSystemVersion</key><string>13.0</string>
     <key>NSMicrophoneUsageDescription</key><string>MiniDictate records your voice while you hold the dictation key.</string>
     <key>NSSpeechRecognitionUsageDescription</key><string>MiniDictate turns your speech into text.</string>

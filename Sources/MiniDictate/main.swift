@@ -18,7 +18,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pill: PillPanel!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.applicationIconImage = appIcon()
         NSApp.mainMenu = mainMenu()
         if let demoPage { return startDemo(demoPage) }
         hub = HubWindow(model: model)
@@ -93,22 +92,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appItem.submenu = appMenu; editItem.submenu = editMenu; windowItem.submenu = windowMenu
         [appItem, editItem, windowItem].forEach(main.addItem)
         return main
-    }
-
-    private func appIcon() -> NSImage {
-        NSImage(size: NSSize(width: 256, height: 256), flipped: false) { rect in
-            let tile = rect.insetBy(dx: 20, dy: 20)
-            NSColor(red: 0.11, green: 0.11, blue: 0.10, alpha: 1).setFill()
-            NSBezierPath(roundedRect: tile, xRadius: 50, yRadius: 50).fill()
-            let config = NSImage.SymbolConfiguration(pointSize: 110, weight: .bold)
-                .applying(.init(paletteColors: [.white]))
-            if let glyph = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)?
-                .withSymbolConfiguration(config) {
-                glyph.draw(in: NSRect(x: rect.midX - glyph.size.width / 2, y: rect.midY - glyph.size.height / 2,
-                                      width: glyph.size.width, height: glyph.size.height))
-            }
-            return true
-        }
     }
 
     // MARK: Hotkey listener
